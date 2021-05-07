@@ -15,7 +15,7 @@ const IMF_WRITE_RGBA = IMF_WRITE_RGB + IMF_WRITE_A
 end  # module C
 
 function check(ret)
-    ret == 0 && error(unsafe_string(C.ImfErrorMessage()))
+    ret == typeof(ret)(0) && error(unsafe_string(C.ImfErrorMessage()))
 end
 
 """
