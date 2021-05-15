@@ -1,6 +1,6 @@
 name = "OpenEXR"
 uuid = "52e1d378-f018-4a11-a4be-720524705ac7"
-authors = ["Tracy Wadleigh <tracy@compoundeye.com>"]
+authors = ["Tracy Wadleigh <tracy.wadleigh@gmail.com>"]
 version = "0.2.0"
 
 [deps]
