@@ -14,6 +14,35 @@ include("OpenEXR_api.jl")
 const IMF_WRITE_RGBA = IMF_WRITE_RGB + IMF_WRITE_A
 end  # module C
 
+const MAGIC = Cint(C.IMF_MAGIC)
+
+@enum Compression::Cint begin
+    NO_COMPRESSION = C.IMF_NO_COMPRESSION
+    RLE_COMPRESSION = C.IMF_RLE_COMPRESSION
+    ZIPS_COMPRESSION = C.IMF_ZIPS_COMPRESSION
+    ZIP_COMPRESSION = C.IMF_ZIP_COMPRESSION
+    PIZ_COMPRESSION = C.IMF_PIZ_COMPRESSION
+    PXR24_COMPRESSION = C.IMF_PXR24_COMPRESSION
+    B44_COMPRESSION = C.IMF_B44_COMPRESSION
+    B44A_COMPRESSION = C.IMF_B44A_COMPRESSION
+    DWAA_COMPRESSION = C.IMF_DWAA_COMPRESSION
+    DWAB_COMPRESSION = C.IMF_DWAB_COMPRESSION
+end
+
+@enum RgbaChannels::Cint begin
+    WRITE_R = C.IMF_WRITE_R
+    WRITE_G = C.IMF_WRITE_G
+    WRITE_B = C.IMF_WRITE_B
+    WRITE_A = C.IMF_WRITE_A
+    WRITE_Y = C.IMF_WRITE_Y
+    WRITE_C = C.IMF_WRITE_C
+    WRITE_RGB = C.IMF_WRITE_RGB
+    WRITE_RGBA = C.IMF_WRITE_RGBA
+    WRITE_YC = C.IMF_WRITE_YC
+    WRITE_YA = C.IMF_WRITE_YA
+    WRITE_YCA = C.IMF_WRITE_YCA
+end
+
 function check(ret)
     ret == typeof(ret)(0) && error(unsafe_string(C.ImfErrorMessage()))
 end
@@ -66,7 +95,7 @@ end
 Save the channels of `image` indicated by `channels` (by default, all are saved) into a
 file in OpenEXR format named `filename`.
 """
-function save_exr(filename, image::AbstractArray{C.ImfRgba, 2}, channels = C.IMF_WRITE_RGBA)
+function save_exr(filename, image::AbstractArray{C.ImfRgba, 2}, channels = WRITE_RGBA)
     # get the size of the data
     (height, width) = size(image)
 
@@ -98,7 +127,7 @@ function save_exr(filename, image::AbstractArray{C.ImfRgba, 2}, channels = C.IMF
     nothing
 end
 
-function save_exr(f, image::AbstractArray{T, 2}, channels = C.IMF_WRITE_RGBA) where T
+function save_exr(f, image::AbstractArray{T, 2}, channels = IMF_WRITE_RGBA) where T
     save_exr(f, (c->convert(C.ImfRgba, c)).(image), channels)
 end
 
