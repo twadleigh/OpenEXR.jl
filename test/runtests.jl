@@ -31,35 +31,35 @@ using Test, OpenEXR, FileIO, Colors, FixedPointNumbers
                 loaded_img = OpenEXR.load(fn)
                 @test typeof(loaded_img) === Array{load_type,2}
                 converted_img = (c -> convert(save_type, c)).(loaded_img)
-                #@test converted_img ≈ loaded_img
+                @test converted_img == loaded_img
             finally
                 rm(fn.filename)
             end
         end
     end
 
-    # @testset "Lossy with type conversion" begin
+    @testset "Lossy with type conversion" begin
 
-    #     @testset "Bit depth truncation" begin
+        @testset "Bit depth truncation" begin
 
-    #         for (save_type, load_type) in (
-    #             (RGBA{Float32}, RGBA{Float16}),
-    #             (RGB{Float32}, RGB{Float16}),
-    #             (GrayA{Float32}, GrayA{Float16}),
-    #             (Gray{Float32}, Gray{Float16}),
-    #         )
-    #             img = rand(save_type, 256, 512)
-    #             fn = File{DataFormat{:EXR}}(tempname())
-    #             OpenEXR.save(fn, img)
-    #             try
-    #                 loaded_img = OpenEXR.load(fn)
-    #                 @test typeof(loaded_img) === Array{load_type,2}
-    #                 diffs = map(colordiff, color.(img), color.(loaded_img))
-    #                 @test maximum(diffs) <= 1.0
-    #             finally
-    #                 rm(fn.filename)
-    #             end
-    #         end
-    #     end
-    # end
+            for (save_type, load_type) in (
+                (RGBA{Float32}, RGBA{Float16}),
+                (RGB{Float32}, RGB{Float16}),
+                (GrayA{Float32}, GrayA{Float16}),
+                (Gray{Float32}, Gray{Float16}),
+            )
+                img = rand(save_type, 256, 512)
+                fn = File{DataFormat{:EXR}}(tempname())
+                OpenEXR.save(fn, img)
+                try
+                    loaded_img = OpenEXR.load(fn)
+                    @test typeof(loaded_img) === Array{load_type,2}
+                    diffs = map(colordiff, color.(img), color.(loaded_img))
+                    @test diffs ≈ zeros(size(diffs)) rtol = 1e-10
+                finally
+                    rm(fn.filename)
+                end
+            end
+        end
+    end
 end
