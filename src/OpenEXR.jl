@@ -2,7 +2,7 @@ module OpenEXR
 
 export load_exr, save_exr
 
-using FileIO
+using FileIO, Colors
 
 module C
 using OpenEXR_jll
@@ -48,14 +48,15 @@ function check(ret)
 end
 
 """
-    load_exr(filename)
+    load_exr(filename)::(Array{RGBA{Float16},2}, RgbaChannels)
 
-If `filename` is a file in OpenEXR format, return a tuple containing the corresponding
-RGBA{Float16} image along with in integer encoding the populated channels.
+Returns the image data contained in `filename` along with flags representing the on-disk
+storage format.
 """
 function load_exr(filename)
     infile = C.ImfOpenInputFile(filename)  # open the file
     check(infile)
+    chans = RgbaChannels(C.ImfInputChannels(infile))
     try
         # get the header
         hdr = C.ImfInputHeader(infile)
@@ -63,39 +64,45 @@ function load_exr(filename)
         # read its data window
         xmin = Ref{Cint}()
         ymin = Ref{Cint}()
-        xmax = Ref{Cint}() 
+        xmax = Ref{Cint}()
         ymax = Ref{Cint}()
         C.ImfHeaderDataWindow(hdr, xmin, ymin, xmax, ymax)
 
         # compute the window size
-        width = xmax[]-xmin[]+1
-        height = ymax[]-ymin[]+1
+        width = xmax[] - xmin[] + 1
+        height = ymax[] - ymin[] + 1
 
         # allocate space for the result and get its strides
-        data = Array{C.ImfRgba, 2}(undef, height, width)
+        data = Array{C.ImfRgba,2}(undef, height, width)
         (xstride, ystride) = strides(data)
 
         # get the pointer to the data, shifting it according to the expected window
-        dataptr = Base.unsafe_convert(Ptr{C.ImfRgba}, data) - xmin[] * xstride - ymin[] * ystride
+        dataptr =
+            Base.unsafe_convert(Ptr{C.ImfRgba}, data) - xmin[] * xstride - ymin[] * ystride
 
         # copy the data
         check(C.ImfInputSetFrameBuffer(infile, dataptr, ystride, xstride))
         check(C.ImfInputReadPixels(infile, ymin[], ymax[]))
 
         # return the loaded raster along with the channels
-        return (data, C.ImfInputChannels(infile))
+        return (data, chans)
     finally
         check(C.ImfCloseInputFile(infile))
     end
 end
 
 """
-    save_exr(filename, image[, channels])
+    save_exr(filename, image[, compression[, channels]])
 
-Save the channels of `image` indicated by `channels` (by default, all are saved) into a
-file in OpenEXR format named `filename`.
+Save `image` as an OpenEXR file in `filename`, storing the data in a format
+indicated by `channels` using the `compression` algorithm.
 """
-function save_exr(filename, image::AbstractArray{C.ImfRgba, 2}, channels = WRITE_RGBA)
+function save_exr(
+    filename,
+    image::AbstractArray{C.ImfRgba,2},
+    compression::Compression = ZIP_COMPRESSION,
+    channels::RgbaChannels = WRITE_RGBA,
+)
     # get the size of the data
     (height, width) = size(image)
 
@@ -103,9 +110,12 @@ function save_exr(filename, image::AbstractArray{C.ImfRgba, 2}, channels = WRITE
     hdr = C.ImfNewHeader()
     check(hdr)
     try
+        # set the compression
+        C.ImfHeaderSetCompression(hdr, compression)
+
         # set the correct window sizes
-        C.ImfHeaderSetDataWindow(hdr, 0, 0, width-1, height-1)
-        C.ImfHeaderSetDisplayWindow(hdr, 0, 0, width-1, height-1)
+        C.ImfHeaderSetDataWindow(hdr, 0, 0, width - 1, height - 1)
+        C.ImfHeaderSetDisplayWindow(hdr, 0, 0, width - 1, height - 1)
 
         # open the output file
         outfile = C.ImfOpenOutputFile(filename, hdr, channels)
@@ -127,12 +137,72 @@ function save_exr(filename, image::AbstractArray{C.ImfRgba, 2}, channels = WRITE
     nothing
 end
 
-function save_exr(f, image::AbstractArray{T, 2}, channels = IMF_WRITE_RGBA) where T
-    save_exr(f, (c->convert(C.ImfRgba, c)).(image), channels)
+function save_exr(
+    filename,
+    image::AbstractArray{T,2},
+    compression::Compression = ZIP_COMPRESSION,
+    channels::RgbaChannels = WRITE_RGBA,
+) where {T}
+    save_exr(filename, (c -> convert(C.ImfRgba, c)).(image), compression, channels)
+end
+
+"""
+    load(filename)::Array{[RGB|RGBA|Gray|GrayA]{Float16},2}
+
+Returns the image data contained in `filename`.
+"""
+function load(filename::AbstractString)
+    (rgba, chans) = load_exr(filename)
+    if chans == WRITE_YA
+        return (c -> convert(GrayA{Float16}, c)).(rgba)
+    elseif chans == WRITE_Y
+        return (c -> convert(Gray{Float16}, c)).(rgba)
+    elseif UInt32(chans) & UInt32(WRITE_A) == 0x00
+        return (c -> convert(RGB{Float16}, c)).(rgba)
+    else
+        return rgba
+    end
+end
+
+"""
+    save(filename, image[, compression])
+
+Save `image` as an OpenEXR file in `filename` using the `compression` algorithm.
+"""
+function save(
+    filename::AbstractString,
+    image::AbstractArray{T,2},
+    compression::Compression = ZIP_COMPRESSION,
+) where {T<:Transparent3}
+    save_exr(filename, image, compression, WRITE_RGBA)
+end
+
+function save(
+    filename::AbstractString,
+    image::AbstractArray{T,2},
+    compression::Compression = ZIP_COMPRESSION,
+) where {T<:Color3}
+    save_exr(filename, image, compression, WRITE_RGB)
+end
+
+function save(
+    filename::AbstractString,
+    image::AbstractArray{T,2},
+    compression::Compression = ZIP_COMPRESSION,
+) where {T<:TransparentGray}
+    save_exr(filename, image, compression, WRITE_YA)
+end
+
+function save(
+    filename::AbstractString,
+    image::AbstractArray{T,2},
+    compression::Compression = ZIP_COMPRESSION,
+) where {T<:AbstractGray}
+    save_exr(filename, image, compression, WRITE_Y)
 end
 
 # FileIO interface
-load(f::File{DataFormat{:EXR}}) = load_exr(f.filename)[1]
-save(f::File{DataFormat{:EXR}}, args...) = save_exr(f.filename, args...)
+load(f::File{DataFormat{:EXR}}, args...) = load(f.filename, args...)
+save(f::File{DataFormat{:EXR}}, args...) = save(f.filename, args...)
 
 end  # module OpenEXR
