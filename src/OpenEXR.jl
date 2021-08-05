@@ -2,7 +2,7 @@ module OpenEXR
 
 export load_exr, save_exr
 
-using FileIO
+using FileIO, Colors
 
 module C
 using OpenEXR_jll
@@ -48,14 +48,15 @@ function check(ret)
 end
 
 """
-    _load_exr(filename)::(Array{RGBA{Float16},2}, RgbaChannels)
+    load_exr(filename)::(Array{RGBA{Float16},2}, RgbaChannels)
 
 Returns the image data contained in `filename` along with flags representing the on-disk
 storage format.
 """
-function _load_exr(filename)
+function load_exr(filename)
     infile = C.ImfOpenInputFile(filename)  # open the file
     check(infile)
+    chans = RgbaChannels(C.ImfInputChannels(infile))
     try
         # get the header
         hdr = C.ImfInputHeader(infile)
@@ -84,19 +85,19 @@ function _load_exr(filename)
         check(C.ImfInputReadPixels(infile, ymin[], ymax[]))
 
         # return the loaded raster along with the channels
-        return (data, C.ImfInputChannels(infile))
+        return (data, chans)
     finally
         check(C.ImfCloseInputFile(infile))
     end
 end
 
 """
-    _save_exr(filename, image[, compression[, channels]])
+    save_exr(filename, image[, compression[, channels]])
 
 Save `image` as an OpenEXR file in `filename`, storing the data in a format
 indicated by `channels` using the `compression` algorithm.
 """
-function _save_exr(
+function save_exr(
     filename,
     image::AbstractArray{C.ImfRgba,2},
     compression::Compression = ZIP_COMPRESSION,
@@ -136,22 +137,22 @@ function _save_exr(
     nothing
 end
 
-function _save_exr(
+function save_exr(
     filename,
     image::AbstractArray{T,2},
     compression::Compression = ZIP_COMPRESSION,
     channels::RgbaChannels = WRITE_RGBA,
 ) where {T}
-    _save_exr(filename, (c -> convert(C.ImfRgba, c)).(image), compression, channels)
+    save_exr(filename, (c -> convert(C.ImfRgba, c)).(image), compression, channels)
 end
 
 """
-    load_exr(filename)::Array{[RGB|RGBA|Gray|GrayA]{Float16},2}
+    load(filename)::Array{[RGB|RGBA|Gray|GrayA]{Float16},2}
 
 Returns the image data contained in `filename`.
 """
-function load_exr(filename)
-    (rgba, chans) = _load_exr(filename)
+function load(filename::AbstractString)
+    (rgba, chans) = load_exr(filename)
     if chans == WRITE_YA
         return (c -> convert(GrayA{Float16}, c)).(rgba)
     elseif chans == WRITE_Y
@@ -163,45 +164,45 @@ function load_exr(filename)
     end
 end
 
-function save_exr(
-    filename,
-    image::AbstractArray{T,2},
-    compression::Compression = ZIP_COMPRESSION,
-) where {T<:Transparent3}
-    _save_exr(filename, image, compression, WRITE_RGBA)
-end
-
 """
-    save_exr(filename, image[, compression])
+    save(filename, image[, compression])
 
 Save `image` as an OpenEXR file in `filename` using the `compression` algorithm.
 """
-function save_exr(
-    filename,
+function save(
+    filename::AbstractString,
+    image::AbstractArray{T,2},
+    compression::Compression = ZIP_COMPRESSION,
+) where {T<:Transparent3}
+    save_exr(filename, image, compression, WRITE_RGBA)
+end
+
+function save(
+    filename::AbstractString,
     image::AbstractArray{T,2},
     compression::Compression = ZIP_COMPRESSION,
 ) where {T<:Color3}
-    _save_exr(filename, image, compression, WRITE_RGB)
+    save_exr(filename, image, compression, WRITE_RGB)
 end
 
-function save_exr(
-    filename,
+function save(
+    filename::AbstractString,
     image::AbstractArray{T,2},
     compression::Compression = ZIP_COMPRESSION,
 ) where {T<:TransparentGray}
-    _save_exr(filename, image, compression, WRITE_YA)
+    save_exr(filename, image, compression, WRITE_YA)
 end
 
-function save_exr(
-    filename,
+function save(
+    filename::AbstractString,
     image::AbstractArray{T,2},
     compression::Compression = ZIP_COMPRESSION,
 ) where {T<:AbstractGray}
-    _save_exr(filename, image, compression, WRITE_Y)
+    save_exr(filename, image, compression, WRITE_Y)
 end
 
 # FileIO interface
-load(f::File{DataFormat{:EXR}}, args...) = load_exr(f.filename, args...)
-save(f::File{DataFormat{:EXR}}, args...) = save_exr(f.filename, args...)
+load(f::File{DataFormat{:EXR}}, args...) = load(f.filename, args...)
+save(f::File{DataFormat{:EXR}}, args...) = save(f.filename, args...)
 
 end  # module OpenEXR
