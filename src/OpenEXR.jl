@@ -76,13 +76,14 @@ function load_exr(filename)
         data = Array{C.ImfRgba,2}(undef, height, width)
         (xstride, ystride) = strides(data)
 
-        # get the pointer to the data, shifting it according to the expected window
-        dataptr =
-            Base.unsafe_convert(Ptr{C.ImfRgba}, data) - xmin[] * xstride - ymin[] * ystride
+        GC.@preserve data begin
+            # get the pointer to the data, shifting it according to the expected window
+            dataptr = pointer(data) - xmin[] * xstride - ymin[] * ystride
 
-        # copy the data
-        check(C.ImfInputSetFrameBuffer(infile, dataptr, ystride, xstride))
-        check(C.ImfInputReadPixels(infile, ymin[], ymax[]))
+            # copy the data
+            check(C.ImfInputSetFrameBuffer(infile, dataptr, ystride, xstride))
+            check(C.ImfInputReadPixels(infile, ymin[], ymax[]))
+        end
 
         # return the loaded raster along with the channels
         return (data, chans)
@@ -121,13 +122,15 @@ function save_exr(
         outfile = C.ImfOpenOutputFile(filename, hdr, channels)
         check(outfile)
         try
-            # get the strides and a pointer to the raster
-            (xstride, ystride) = strides(image)
-            dataptr = Base.unsafe_convert(Ptr{C.ImfRgba}, image)
+            GC.@preserve image begin
+                # get the strides and a pointer to the raster
+                (xstride, ystride) = strides(image)
+                dataptr = pointer(image)
 
-            # copy the data
-            check(C.ImfOutputSetFrameBuffer(outfile, dataptr, ystride, xstride))
-            check(C.ImfOutputWritePixels(outfile, height))
+                # copy the data
+                check(C.ImfOutputSetFrameBuffer(outfile, dataptr, ystride, xstride))
+                check(C.ImfOutputWritePixels(outfile, height))
+            end
         finally
             check(C.ImfCloseOutputFile(outfile))
         end
